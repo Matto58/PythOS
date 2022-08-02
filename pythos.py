@@ -1,10 +1,12 @@
-from re import T
 from time import sleep
 import random
 import pygame
+import json
 
 console = []
 max_len = 50
+
+fr = 92
 
 pygame.init()
 
@@ -44,13 +46,15 @@ imgs = {
         }
     },
     "extra": {
-        "loading": pygame.image.load("data/imgs/extra/load.gif")
+        "loading": pygame.image.load("data/imgs/extra/load.gif"),
+        "load_fr": []
     },
     "ui": {
         "menubar": pygame.image.load("data/imgs/ui/menubar.png"),
         "btn": {
             "home": pygame.image.load("data/imgs/ui/home-mini.png"),
-            "search": pygame.image.load("data/imgs/ui/search-mini.png")
+            "search": pygame.image.load("data/imgs/ui/search-mini.png"),
+            "settings": pygame.image.load("data/imgs/ui/settings-mini.png")
         },
         "window": {
             "light": pygame.image.load("data/imgs/ui/window-light.png"),
@@ -61,6 +65,8 @@ imgs = {
 fonts = {
     "mono": pygame.font.Font("data/fonts/Source_Code_Pro/normal/SourceCodePro-Regular.ttf", 16),
     "sans": pygame.font.Font("data/fonts/Noto_Sans/normal/NotoSans-Regular.ttf", 16),
+    "sans_bold": pygame.font.Font("data/fonts/Noto_Sans/normal/NotoSans-Bold.ttf", 16),
+    "roboto": pygame.font.Font("data/fonts/Roboto/normal/Roboto-Regular.ttf", 16)
 }
 bgs = {
     "red2blue": pygame.image.load("data/imgs/bg/red2blue.png"),
@@ -70,7 +76,7 @@ bgs = {
     "colors": pygame.image.load("data/imgs/bg/colors.png")
 }
 sfx = {
-    "boot": pygame.mixer.Sound("data/sfx/boot.wav"),
+    "boot": pygame.mixer.Sound("data/sound/boot.wav"),
 }
 true_bgs = [
     bgs["red2blue"],
@@ -86,11 +92,12 @@ def PythOS_print(text: str):
             console.pop(0)
 
 class Window:
-    def __init__(self, x: int, y: int, title: str, dark: bool = False):
+    def __init__(self, x: int, y: int, title: str, contents: str, dark: bool = False):
         self.x = x
         self.y = y
         self.title = title
         self.dark = dark
+        self.text = contents.split("\n")
     
     def draw(self, screen: pygame.Surface):
         if self.dark:
@@ -103,8 +110,24 @@ class Window:
         if len(t) > max_len:
             t = t[:(max_len-3)] + "..."
 
-        text = fonts["sans"].render(t, True, colors["white"])
-        screen.blit(text, (self.x + 6, self.y + 4))
+        color = None
+        if self.dark:
+            color = colors["white"]
+        else:
+            color = colors["black"]
+
+        text = fonts["sans_bold"].render(t, True, color)
+        screen.blit(text, (self.x + 10, self.y + 4))
+
+        i = 0
+        for line in self.text:
+            text = fonts["sans"].render(line, True, color)
+            screen.blit(text, (self.x + 10, self.y + 36 + i))
+            i += 20
+
+
+for i in range(fr):
+    imgs["extra"]["load_fr"].append(pygame.image.load("data/imgs/extra/load3/frame-" + str(i+1) + ".png"))
 
 
 def Main():
@@ -116,9 +139,11 @@ def Main():
     time = 0
     percentage = 0
 
+    # Settings (these are defaults, change these in data/settings.json)
     HIDE_CONSOLE = False
     CONSOLE_IN_DESKTOP = False
     background = true_bgs[0]
+    LIGHT_MODE = True
 
     console = [
         "PythOS v0.0.1",
@@ -135,16 +160,29 @@ def Main():
     bg_img = true_bgs[1]
     first_boot = True
 
-    with open("data/isfirstboot", "r") as f:
-        first_boot = f.read() == "1"
+    with open("data/settings.json", "r") as f:
+        settings = json.load(f)
+        HIDE_CONSOLE = settings["hide_console"]
+        CONSOLE_IN_DESKTOP = settings["console_in_desktop"]
+        background = true_bgs[int(settings["background"])]
+        LIGHT_MODE = settings["light_mode"]
+        first_boot = settings["first_boot"]
 
     windows = []
+    first_boot_window_text = (
+        "Welcome to PythOS v0.0.1!\n" +
+        "PythOS is an \"operating system\" built in Python 3.\n\n" +
+        "Looks like this is the first time you are using PythOS.\n" +
+        "This window will not appear again.\n\n" +
+        "Hope you enjoy using PythOS!"
+    )
     first_boot_window = Window(
         # centered window
         (scr_size[0] - 800) // 2,
         (scr_size[1] - 600 + 72) // 2,
         "Welcome to PythOS v0.0.1!",
-        True
+        first_boot_window_text,
+        not LIGHT_MODE
     )
 
     if first_boot:
@@ -163,14 +201,12 @@ def Main():
         console_color_shadow = colors["dark_gray"]
         shadow_distance = (1, 1)
 
-        pressed_last_frame = False
-
         if percentage != 200:
             # Console environment
             console[3] = str(time) + " ticks from boot start"
             screen.blit(bg_img, (0, 0))
             screen.blit(logo_img, logo_pos)
-            if time % random.randint(2, 4) == 0 and percentage < 100:
+            if time % random.randint(4, 7) == 0 and percentage < 100:
                 percentage += 1
                 console[1] = "Loading " + str(percentage) + "%..."
             if percentage == 100:
@@ -179,6 +215,12 @@ def Main():
                 percentage = 200
                 sleep(random.randint(2000, 5000) / 1000)
                 pygame.mixer.Sound.play(sfx["boot"])
+
+            load_pos = (
+                (scr_size[0] - imgs["extra"]["loading"].get_width()) // 2,
+                (scr_size[1] - imgs["extra"]["loading"].get_height()) // 1.025
+            )
+            screen.blit(imgs["extra"]["load_fr"][(time % fr)], load_pos)
 
             if not HIDE_CONSOLE:
                 for i in range(len(console)):
@@ -193,17 +235,21 @@ def Main():
         else:
             mouse = pygame.mouse.get_pos()
             press = pygame.mouse.get_pressed()
-            previous_press = press[0]
 
             pygame.display.set_caption("PythOS v0.0.1 - desktop environment")
-            with open("data/isfirstboot", "w") as f:
-                f.write("0")
 
             screen.blit(background, (0, 0))
 
             for window in windows:
                 window.draw(screen)
             
+            with open("data/settings.json", "r") as f:
+                # data/settings.json/first_boot should be set to false after first boot
+                settings = json.load(f)
+                settings["first_boot"] = False
+                with open("data/settings.json", "w") as f2:
+                    json.dump(settings, f2)
+                    
             b = 0
             btns = imgs["ui"]["btn"]
             screen.blit(imgs["ui"]["menubar"], (0, 0))
@@ -215,16 +261,16 @@ def Main():
                 if mouse[0] > (4 + btns[btn].get_width()) * b + 4 and mouse[0] < (4 + btns[btn].get_width()) * (b + 1) + 4:
                     if mouse[1] > 4 and mouse[1] < 4 + btns[btn].get_height():
                         if press[0]:
-                            if btn == "home":
-                                print("home has been pressed")
-                            elif btn == "search":
-                                print("search has been pressed")
+                            # todo: this code needs to be improved asap
+                            if btn == "settings": print("You must change settings in data/settings.json")
+                            else: print(btn + " has been pressed")
                 b += 1
                 
             console_text = []
             console_text_shadow = []
             #console_color = colors["green"]
             console = [
+                "PythOS v0.0.1",
                 str(time) + " ticks from boot start",
                 "You're in the desktop environment.",
             ]
